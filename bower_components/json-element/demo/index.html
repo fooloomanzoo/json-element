@@ -13,17 +13,24 @@
     <link rel="import" href="../json-element.html">
 
     <style is="custom-style" include="demo-pages-shared-styles">
+      #test1 {
+        display: flex;
+        align-items: flex-start;
+        flex-direction: row;
+      }
     </style>
   </head>
   <body>
     <div class="vertical-section-container centered">
       <h3>Basic json-element demo</h3>
       <demo-snippet>
-        <template>
-          <json-element value='{"a":1,"b":{"h": true, "gasdsadsad": [ 1 , 2 , true ] }}'></json-element>
-          <!-- <json-element value='["a","b"]']></json-element> -->
+        <template id="test1">
+          <json-element id="testjson" value="{{jsontest}}"></json-element>
         </template>
       </demo-snippet>
+      <script type="text/javascript">
+        document.querySelector('#testjson').set("value", '{"a":1,"b":{"h": true, "gasdsadsad": [ 1 , 2 , true ] }}');
+      </script>
     </div>
   </body>
 </html>

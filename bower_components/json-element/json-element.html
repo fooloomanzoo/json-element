@@ -48,27 +48,61 @@ edit and view json-objects
         top: 0.75em; /* (line-height/2) */
         left: 0;
       }
-      .leaf {
+      .entry {
         display: inline-flex;
+        flex-direction: row;
       }
       .value {
         padding: 0 0.5em;
         font-weight: bold;
       }
+      li.empty,
+      li.empty .value {
+        font-style: italic;
+        font-weight: normal;
+      }
+      .add {
+        cursor: pointer;
+        align-self: center;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.1);
+        opacity: 0.5;
+        line-height: 1ch;
+        height: 1ch;
+        padding: 0.25ch;
+        transition: opacity 150ms cubic-bezier(0.667, 1, 0.667, 1);
+      }
+      .add:hover {
+        opacity: 1;
+      }
+      .key ~ .add {
+        margin-left: 0.5em;
+      }
     </style>
-    <div class="key" contenteditable on-focus="_handleFocus" on-blur="_handleBlur" hidden$=[[!key]]>{{key}}</div>
+    <div class="entry">
+      <div class="key" contenteditable>{{key}}</div>
+      <div class="add" on-click="_showFieldForNewEntry">+</div>
+    </div>
     <ul>
-      <template is="dom-repeat" items="[[_getObjectKeys()]]" as="nodeKey">
+      <template is="dom-repeat" id="entryTemplate" items="[[_valueKeys]]" as="nodeKey">
         <li>
           <template is="dom-if" if="[[_isLeaf(nodeKey)]]">
-            <div class="leaf">
-              <div class="key" contenteditable>[[nodeKey]]</div>:
-              <div class="value" contenteditable>[[_getObjectValue(nodeKey)]]</div>
+            <div class="entry">
+              <div class="key" key="[[nodeKey]]" contenteditable on-input="_entryKeyChanged">[[nodeKey]]</div>:
+              <div class="value" key="[[nodeKey]]" on-input="_entryValueChanged" contenteditable>[[_getObjectValue(nodeKey)]]</div>
             </div>
           </template>
           <template is="dom-if" if="[[!_isLeaf(nodeKey)]]">
-              <json-element key="[[nodeKey]]" value="[[_getObjectValue(nodeKey)]]"></json-element>
+              <json-element key="[[nodeKey]]" value="[[_getObjectValue(nodeKey)]]" on-key-changed="_entryKeyChanged" on-value-changed="_entryValueChanged"></json-element>
           </template>
+        </li>
+      </template>
+      <template is="dom-if" if="[[_newEntryActive]]" restamp>
+        <li class="empty">
+          <div class="entry">
+            <div class="key" key="" contenteditable on-input="_entryKeyChanged">new key</div>:
+            <div class="value" key="" on-input="_entryValueChanged" contenteditable>new value</div>
+          </div>
         </li>
       </template>
     </ul>
@@ -84,40 +118,90 @@ edit and view json-objects
             value: null
           },
           value: {
-            type: Object
-          }
+            type: Object,
+            observer: '_valueChanged'
+          },
+          _newEntryActive: Boolean,
+          _valueKeys: Array
         };
       }
       ready() {
         super.ready();
-        // this.addEventListener('focus', e => {this._handleFocus(e)});
-        // this.addEventListener('blur', e => {this._handleBlur(e)});
       }
-      _handleFocus(e) {
-        console.info(e.target.id + ' was focused.');
+      _valueChanged() {
+        var value;
+        if (this._isString(this.value)) {
+          try {
+            value = JSON.parse(this.value);
+          } catch (e) {
+            value = {};
+          } finally {
+            this.value = value;
+          }
+        }
+        this._valueKeys = (Object.keys(this.value) || []).slice();
+        this.notifyPath('_valueKeys');
+        // this.notifyPath('value');
       }
-      _handleBlur(e) {
-        console.info(e.target.id + ' was blurred.');
+      _entryKeyChanged(e) {
+        var newKey = this._isNumber(e.target.textContent) ? parseFloat(e.target.textContent) : ''+e.target.textContent;
+        this.value[newKey] = this.value[e.target.key] || null;
+        delete this.value[e.target.key];
+        e.target.key = newKey;
+        e.target.nextElementSibling.key = newKey;
+        this._newEntryActive = false;
+        this._valueChanged();
+        // if (e.target.root && e.target.root.host) {
+        //   delete e.target.root.host.value[e.target.key];
+        //   e.target.root.host.set('value.' + newKey, this.value[newKey]);
+        // }
+        this.dispatchEvent(new CustomEvent('key-changed', {bubbles: false}));
       }
-      _getObjectKeys() {
-        return Object.keys(this.value) || [];
+      _entryValueChanged(e) {
+        if (e.target.key === undefined) {
+          return;
+        }
+        var key = e.target.key;
+        var value = e.target.value || e.target.textContent;
+        if (this._isArray(value)) {
+          this.value[key] = value;
+        } else if (this._isObject(value)) {
+          this.value[key] = value;
+        } else if (this._isNumber(value)) {
+          this.value[key] = parseFloat(value);
+        } else if (this._isBoolean(value)) {
+          this.value[key] = !value || value === 'false' ? false : true;
+        } else {
+          e.target.textContent = '' + value;
+        }
+        // if (e.target.root && e.target.root.host) {
+        //   e.target.root.host.set('value.' + key, this.value[newKey]);
+        // }
+        this._valueChanged();
+        console.log(e.target.root);
+        this.dispatchEvent(new CustomEvent('value-changed'));
+        //console.log(performance.now(), e.target, JSON.stringify(this.value));
+      }
+      _getObjectKeys(value, cr) {
+        return Object.keys(value) || [];
       }
       _getObjectValue(key) {
-        if (!this._isObject() || key === undefined || !this.value[key]) {
+        if (key === undefined || !this.value[key]) {
           return;
         }
         return this.value[key];
+      }
+      _showFieldForNewEntry() {
+        this._newEntryActive = true;
       }
       _isLeaf(key) {
         var entry = this._getObjectValue(key);
         return !(entry instanceof Object);
       }
       _isObject(leaf) {
-        leaf = leaf || this.value;
         return leaf instanceof Object;
       }
       _isArray(leaf) {
-        leaf = leaf || this.value;
         return Array.isArray(leaf);
       }
       _isNumber(leaf) {
@@ -129,8 +213,12 @@ edit and view json-objects
         if (Object.prototype.toString.call(leaf) == '[object Boolean]') {
           return true;
         } else if (Object.prototype.toString.call(leaf) == '[object String]') {
-          var bool = JSON.parse(leaf);
-          return bool === true || bool === false;
+          try {
+            var bool = JSON.parse(leaf);
+            return bool === true || bool === false;
+          } catch(e) {
+            return false;
+          }
         }
         return false;
       }
