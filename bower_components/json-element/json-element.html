@@ -80,7 +80,7 @@ edit and view json-objects
       }
     </style>
     <div class="entry">
-      <div class="key" contenteditable>{{key}}</div>
+      <div class="key" contenteditable$="[[isNotOfArray]]">{{key}}</div>
       <div class="add" on-click="_showFieldForNewEntry">+</div>
     </div>
     <ul>
@@ -88,20 +88,23 @@ edit and view json-objects
         <li>
           <template is="dom-if" if="[[_isLeaf(nodeKey)]]">
             <div class="entry">
-              <div class="key" key="[[nodeKey]]" contenteditable on-input="_entryKeyChanged">[[nodeKey]]</div>:
-              <div class="value" key="[[nodeKey]]" on-input="_entryValueChanged" contenteditable>[[_getObjectValue(nodeKey)]]</div>
+              <div class="key" key="[[nodeKey]]" contenteditable$="[[_valueIsNotArray]]" on-blur="_entryKeyChanged">[[nodeKey]]</div>:
+              <div class="value" key="[[nodeKey]]" on-blur="_entryValueChanged" contenteditable>[[_getObjectValue(nodeKey)]]</div>
             </div>
           </template>
           <template is="dom-if" if="[[!_isLeaf(nodeKey)]]">
-              <json-element key="[[nodeKey]]" value="[[_getObjectValue(nodeKey)]]" on-key-changed="_entryKeyChanged" on-value-changed="_entryValueChanged"></json-element>
+              <json-element key="[[nodeKey]]" value="[[_getObjectValue(nodeKey)]]"
+              is-not-of-array="[[_valueIsNotArray]]"
+              on-key-changed="_entryKeyChanged"
+              on-value-changed="_entryValueChanged"></json-element>
           </template>
         </li>
       </template>
       <template is="dom-if" if="[[_newEntryActive]]" restamp>
         <li class="empty">
           <div class="entry">
-            <div class="key" key="" contenteditable on-input="_entryKeyChanged">new key</div>:
-            <div class="value" key="" on-input="_entryValueChanged" contenteditable>new value</div>
+            <div id="newKey" class="key" key="[[_getDefaultKey()]]" contenteditable$="[[_valueIsNotArray]]" on-blur="_entryKeyChanged">[[_getDefaultKey()]]</div>:
+            <div class="value" key="[[_getDefaultKey()]]" contenteditable on-blur="_entryValueChanged">new value</div>
           </div>
         </li>
       </template>
@@ -109,6 +112,14 @@ edit and view json-objects
   </template>
 
   <script>
+    var JSON_CONTENT_TYPES = {
+      "BOOLEAN": {
+        "color": "#7A5F88",
+        "handler": function(el, value) {
+          return
+        }
+      }
+    }
     class JSONElement extends Polymer.Element {
       static get is() { return 'json-element'; }
       static get properties() {
@@ -121,7 +132,18 @@ edit and view json-objects
             type: Object,
             observer: '_valueChanged'
           },
-          _newEntryActive: Boolean,
+          _newEntryActive: {
+            type: Boolean,
+            value: false
+          },
+          _valueIsNotArray: {
+            type: Boolean,
+            value: true
+          },
+          isNotOfArray: {
+            type: Boolean,
+            value: true
+          },
           _valueKeys: Array
         };
       }
@@ -138,30 +160,42 @@ edit and view json-objects
           } finally {
             this.value = value;
           }
+        } else if (this._isArray(this.value)) {
+          this._valueIsNotArray = false;
         }
         this._valueKeys = (Object.keys(this.value) || []).slice();
+        this._newEntryActive = false;
         this.notifyPath('_valueKeys');
         // this.notifyPath('value');
       }
       _entryKeyChanged(e) {
         var newKey = this._isNumber(e.target.textContent) ? parseFloat(e.target.textContent) : ''+e.target.textContent;
-        this.value[newKey] = this.value[e.target.key] || null;
-        delete this.value[e.target.key];
+        if (newKey === undefined || newKey === '') {
+          return;
+        }
+        var oldKey = e.target.key;
+        var value = this.value[oldKey] || null;
+
+        delete this.value[oldKey];
+        this.value[newKey] = value;
         e.target.key = newKey;
-        e.target.nextElementSibling.key = newKey;
-        this._newEntryActive = false;
+
+        if (e.target.nextElementSibling.classList.contains('value')) {
+          e.target.nextElementSibling.key = newKey;
+        }
+
         this._valueChanged();
         // if (e.target.root && e.target.root.host) {
         //   delete e.target.root.host.value[e.target.key];
         //   e.target.root.host.set('value.' + newKey, this.value[newKey]);
         // }
-        this.dispatchEvent(new CustomEvent('key-changed', {bubbles: false}));
+        this.dispatchEvent(new CustomEvent('key-changed'));
       }
       _entryValueChanged(e) {
-        if (e.target.key === undefined) {
+        var key = e.target.key;
+        if (key === undefined || key === '') {
           return;
         }
-        var key = e.target.key;
         var value = e.target.value || e.target.textContent;
         if (this._isArray(value)) {
           this.value[key] = value;
@@ -178,7 +212,6 @@ edit and view json-objects
         //   e.target.root.host.set('value.' + key, this.value[newKey]);
         // }
         this._valueChanged();
-        console.log(e.target.root);
         this.dispatchEvent(new CustomEvent('value-changed'));
         //console.log(performance.now(), e.target, JSON.stringify(this.value));
       }
@@ -193,6 +226,12 @@ edit and view json-objects
       }
       _showFieldForNewEntry() {
         this._newEntryActive = true;
+      }
+      _getDefaultKey() {
+        if (!this._valueIsNotArray) {
+          return this.value.length;
+        }
+        return "new";
       }
       _isLeaf(key) {
         var entry = this._getObjectValue(key);
